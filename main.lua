@@ -1,6 +1,19 @@
 
--- dEnz Scripts
-print("Halo dari script Lua dEnz!")
+-- dEnz GUI Test
+-- GUI latihan untuk Roblox Studio
 
-local nama = "dEnz"
-print("Script dibuat oleh " .. nama)
+local aktif = {
+    Eat = false,
+    Sell = false,
+    Collect = false
+}
+
+local function ubahStatus(nama)
+    aktif[nama] = not aktif[nama]
+    print(nama .. ": " .. (aktif[nama] and "ON" or "OFF"))
+end
+
+-- Tes logika tombol di Lua
+ubahStatus("Eat")
+ubahStatus("Sell")
+ubahStatus("Collect")
