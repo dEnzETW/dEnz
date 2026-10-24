@@ -80,13 +80,11 @@ local function startEatGrab()
     eatGrabRunning = true
     setStatus("EAT/GRAB: ON | AUTO-SELL: " .. (autoSellEnabled and "ON" or "OFF"))
 
-    -- Throttled to avoid firing the events on every Heartbeat.
-    local elapsed = 0
-    eatGrabConnection = RunService.Heartbeat:Connect(function(dt)
+    -- Match rEm.lua timing: process the Eat/Grab events on each Heartbeat.
+    -- Note: this can send frequent RemoteEvent calls; use only in a test place
+    -- you control and stop the loop if the game becomes unstable.
+    eatGrabConnection = RunService.Heartbeat:Connect(function()
         if not eatGrabRunning then return end
-        elapsed += dt
-        if elapsed < 0.25 then return end
-        elapsed = 0
 
         local character, eatEvent, grabEvent = getCharacterEvents()
         if not character then
