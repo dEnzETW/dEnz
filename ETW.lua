@@ -2350,17 +2350,16 @@ local function BuildHubUI()
     end)
 
     -- ==============================================================================
-    -- 1. ПОТОК: РАНДОМ ТП АВТО-ФАРМ С WATCHDOG-ЗАЩИТОЙ (10 СЕК СТУПОР -> 3 СЕК ПЕРЕЗАПУСК)
+    -- TELEPORT-ONLY LOOP: no Grab/Eat calls here.
+    -- Teleports to a new edible target at most once every 10 seconds.
+    -- EAT/GRAB + auto-sell remain handled by the separate Auto EAT toggle.
     -- ==============================================================================
     task.spawn(function()
-        local localGrab = G.Services.ReplicatedStorage:WaitForChild("LocalEvents"):WaitForChild("Grab")
-        local localEat = G.Services.ReplicatedStorage:WaitForChild("LocalEvents"):WaitForChild("Eat")
+        local TELEPORT_INTERVAL = 10
+        local lastTeleportAt = 0
+        local wasTeleporting = false
 
-        local lastActivityTime = os.clock()
-        local wasFarming = false
-
-        -- Функция синхронизации визуального состояния тумблера в GUI
-        local function setFarmVisual(state)
+        local function setTeleportVisual(state)
             if S.UI_STORAGE["toggleRandomFarm"] then
                 for _, elem in ipairs(S.UI_STORAGE["toggleRandomFarm"]) do
                     if elem.update then elem.update(state) end
@@ -2370,84 +2369,13 @@ local function BuildHubUI()
 
         while S.Runtime.running do
             if states.randomTPFarm then
-                -- Сброс таймера при включении
-                if not wasFarming then
-                    wasFarming = true
-                    lastActivityTime = os.clock()
-                end
-
-                -- ПРОВЕРКА WATCHDOG: Если 10 секунд ничего не подбиралось и не елось
-                if os.clock() - lastActivityTime >= 10 then
-                    showNotification(
-                        (states.language == "Russian") and "Фарм завис! Перезапуск на 3 сек..." or "Farm stuck! Restarting in 3s...",
-                        "Warning"
-                    )
-
-                    -- 1. Отключаем авто-фарм и визуально переключаем кнопку в OFF
-                    states.randomTPFarm = false
-                    setFarmVisual(false)
-
-                    -- 2. Снимаем физические блокировки и сбрасываем персонажа
+                wasTeleporting = true
+                if os.clock() - lastTeleportAt >= TELEPORT_INTERVAL then
                     local char = player.Character
-                    if char then
-                        local hrp = char:FindFirstChild("HumanoidRootPart")
-                        local hum = char:FindFirstChild("Humanoid")
-                        if hrp then 
-                            hrp.Anchored = false 
-                            hrp.AssemblyLinearVelocity = Vector3.zero
-                        end
-                        if hum then 
-                            hum:ChangeState(Enum.HumanoidStateType.Running) 
-                        end
-                    end
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
-                    -- 3. Ждем ровно 3 секунды
-                    task.wait(3.0)
-
-                    -- 4. Включаем авто-фарм обратно и переключаем кнопку в ON
-                    if S.Runtime.running then
-                        states.randomTPFarm = true
-                        setFarmVisual(true)
-                        lastActivityTime = os.clock()
-                        showNotification(
-                            (states.language == "Russian") and "Авто-фарм перезапущен!" or "Auto-Farm resumed!",
-                            "Success"
-                        )
-                    end
-                end
-
-                local char = player.Character
-                if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
-                    local hrp = char.HumanoidRootPart
-                    local hum = char.Humanoid
-                    local currentChunkVal = char:FindFirstChild("CurrentChunk")
-                    local events = getCharEvents()
-
-                    if hum.Health > 0 and currentChunkVal and events then
-                        hum:ChangeState(Enum.HumanoidStateType.Running)
-
-                        -- Проверка на полный размер
-                        if states.autoSell and isInventoryFull() then
-                            if currentChunkVal.Value ~= nil then
-                                if events.ChunkLoaded then events.ChunkLoaded:FireServer(currentChunkVal.Value) end
-                                events.Eat:FireServer()
-                                local wEat = os.clock()
-                                while currentChunkVal.Value ~= nil and (os.clock() - wEat) < 0.3 do
-                                    task.wait(0.02)
-                                end
-                            end
-
-                            executeSell()
-                            lastActivityTime = os.clock() -- Успешное действие: продажа
-
-                            local wReset = os.clock()
-                            while isInventoryFull() and (os.clock() - wReset) < 1.2 do
-                                task.wait(0.05)
-                            end
-                            task.wait(0.1)
-                        end
-
-                        -- Поиск живого объекта на карте (с приоритетом земли)
+                    if char and hum and hrp and hum.Health > 0 then
                         local targetPart, isGround = getRandomEdiblePart()
                         if targetPart and targetPart.Parent then
                             local partPos = targetPart.Position
@@ -2455,11 +2383,13 @@ local function BuildHubUI()
                             local lookTarget
 
                             if isGround then
-                                -- ТП прямо на землю с наклоном взгляда вниз под ноги
-                                standPos = partPos + Vector3.new(math.random(-1, 1), hum.HipHeight + 0.2, math.random(-1, 1))
+                                standPos = partPos + Vector3.new(
+                                    math.random(-1, 1),
+                                    hum.HipHeight + 0.2,
+                                    math.random(-1, 1)
+                                )
                                 lookTarget = partPos - Vector3.new(0, 2, 0)
                             else
-                                -- ТП перед стеной/зданием
                                 standPos = partPos + Vector3.new(0, hum.HipHeight + 0.5, 2.5)
                                 lookTarget = Vector3.new(partPos.X, standPos.Y, partPos.Z)
                             end
@@ -2467,57 +2397,17 @@ local function BuildHubUI()
                             hrp.CFrame = CFrame.new(standPos, lookTarget)
                             hrp.AssemblyLinearVelocity = Vector3.zero
                             hrp.AssemblyAngularVelocity = Vector3.zero
-
-                            task.wait(states.tpDelay)
-
-                            -- Захват
-                            if currentChunkVal.Value == nil then
-                                localGrab:Fire()
-
-                                local grabTimeout = os.clock()
-                                while currentChunkVal.Value == nil and (os.clock() - grabTimeout) < 0.35 do
-                                    task.wait(0.02)
-                                end
-
-                                if currentChunkVal.Value == nil and events.Grab then
-                                    events.Grab:FireServer(false, false, false)
-                                    task.wait(0.05)
-                                end
-                            end
-
-                            -- Поедание взятого куска
-                            local held = currentChunkVal.Value
-                            if held and held.Parent then
-                                lastActivityTime = os.clock() -- Успешное действие: кусок взят!
-
-                                if events.ChunkLoaded then
-                                    events.ChunkLoaded:FireServer(held)
-                                end
-                                task.wait(0.02)
-
-                                localEat:Fire()
-
-                                local eatTimeout = os.clock()
-                                while currentChunkVal.Value ~= nil and (os.clock() - eatTimeout) < 0.35 do
-                                    task.wait(0.02)
-                                end
-
-                                lastActivityTime = os.clock() -- Успешное действие: кусок съеден!
-                            end
-
-                            local anchorTimeout = os.clock()
-                            while hrp.Anchored and (os.clock() - anchorTimeout) < 0.25 do
-                                task.wait(0.02)
-                            end
-                        else
-                            task.wait(0.1)
+                            lastTeleportAt = os.clock()
                         end
                     end
                 end
+                task.wait(0.1)
             else
-                wasFarming = false
+                if wasTeleporting then
+                    wasTeleporting = false
+                end
+                task.wait(0.1)
             end
-            task.wait(0.02)
         end
     end)
 
