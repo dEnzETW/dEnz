@@ -1,16 +1,20 @@
-
--- rEm_EatGrab_Test.lua
--- Standalone EAT/GRAB test for a private/test environment.
--- This is intentionally separate from ETW.DRAMA.
--- It does NOT include the source script's whitelist, giant platform,
--- speed/teleport, ESP, anti-ragdoll, sell, or attack features.
+-- rEm_EatGrab_Sell_Test.lua
+-- Standalone EAT + GRAB + Auto-Sell-on-full test.
+-- Separate from ETW.DRAMA; intended for a private/test environment only.
+-- Uses the same general bar-detection and Sell-event approach found in rEm.lua.
+-- Status messages report local detection/call attempts, not server-confirmed success.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
-local running = false
-local connection = nil
+local eatGrabRunning = false
+local autoSellEnabled = false
+local eatGrabConnection = nil
+local sellConnection = nil
+local isSelling = false
+local cachedBar = nil
 local screenGui
 
 local function getCharacterEvents()
@@ -18,12 +22,10 @@ local function getCharacterEvents()
     if not character then
         return nil, nil, nil
     end
-
     local events = character:FindFirstChild("Events")
     if not events then
         return character, nil, nil
     end
-
     return character, events:FindFirstChild("Eat"), events:FindFirstChild("Grab")
 end
 
@@ -34,72 +36,143 @@ local function setStatus(text)
     end
 end
 
-local function stopTest()
-    running = false
-    if connection then
-        connection:Disconnect()
-        connection = nil
+local function findBar()
+    if cachedBar and cachedBar.Parent then
+        return cachedBar
     end
-    setStatus("Status: OFF")
+    cachedBar = nil
+    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, obj in ipairs(playerGui:GetDescendants()) do
+            if obj:IsA("Frame") then
+                local name = string.lower(obj.Name)
+                if string.find(name, "bar", 1, true) or string.find(name, "meter", 1, true) then
+                    cachedBar = obj
+                    return obj
+                end
+            end
+        end
+    end
+    return nil
 end
 
-local function startTest()
-    if running then return end
-    running = true
-    setStatus("Status: ON — checking character events")
+local function getSellEvent()
+    local character = LocalPlayer.Character
+    local events = character and character:FindFirstChild("Events")
+    local sell = events and events:FindFirstChild("Sell")
+    if sell and sell:IsA("RemoteEvent") then
+        return sell
+    end
+    return nil
+end
 
-    -- Throttled test loop instead of firing remotes every Heartbeat.
+local function stopEatGrab()
+    eatGrabRunning = false
+    if eatGrabConnection then
+        eatGrabConnection:Disconnect()
+        eatGrabConnection = nil
+    end
+    setStatus(autoSellEnabled and "EAT/GRAB: OFF | AUTO-SELL: ON" or "EAT/GRAB: OFF | AUTO-SELL: OFF")
+end
+
+local function startEatGrab()
+    if eatGrabRunning then return end
+    eatGrabRunning = true
+    setStatus("EAT/GRAB: ON | AUTO-SELL: " .. (autoSellEnabled and "ON" or "OFF"))
+
+    -- Throttled to avoid firing the events on every Heartbeat.
     local elapsed = 0
-    connection = RunService.Heartbeat:Connect(function(dt)
-        if not running then return end
+    eatGrabConnection = RunService.Heartbeat:Connect(function(dt)
+        if not eatGrabRunning then return end
         elapsed += dt
         if elapsed < 0.25 then return end
         elapsed = 0
 
         local character, eatEvent, grabEvent = getCharacterEvents()
         if not character then
-            setStatus("Status: waiting for character")
+            setStatus("Waiting for character...")
             return
         end
 
-        local firedEat, firedGrab = false, false
-
+        local sentEat, sentGrab = false, false
         if grabEvent and grabEvent:IsA("RemoteEvent") then
-            local ok = pcall(function()
+            sentGrab = pcall(function()
                 grabEvent:FireServer(false, false, false)
             end)
-            firedGrab = ok
         end
-
         if eatEvent and eatEvent:IsA("RemoteEvent") then
-            local ok = pcall(function()
+            sentEat = pcall(function()
                 eatEvent:FireServer()
             end)
-            firedEat = ok
         end
 
-        if firedEat and firedGrab then
-            setStatus("Status: ON — Eat + Grab events sent")
-        elseif firedEat then
-            setStatus("Status: ON — Eat sent; Grab event missing")
-        elseif firedGrab then
-            setStatus("Status: ON — Grab sent; Eat event missing")
+        if sentEat and sentGrab then
+            setStatus("EAT/GRAB: ON | AUTO-SELL: " .. (autoSellEnabled and "ON" or "OFF"))
+        elseif sentEat or sentGrab then
+            setStatus("One event sent; check game behavior")
         else
-            setStatus("Status: ON — Eat/Grab RemoteEvent not found")
+            setStatus("Eat/Grab event not found")
         end
     end)
 end
 
-local function makeButton(parent, text, position, callback)
+local function setAutoSell(enabled)
+    autoSellEnabled = enabled
+    if enabled then
+        if not sellConnection then
+            local elapsed = 0
+            sellConnection = RunService.Heartbeat:Connect(function(dt)
+                if not autoSellEnabled or isSelling then return end
+                elapsed += dt
+                if elapsed < 0.2 then return end
+                elapsed = 0
+
+                local bar = findBar()
+                if not bar then
+                    setStatus("AUTO-SELL: ON | bar not found")
+                    return
+                end
+
+                -- Matches the source script's scale-based full-bar check.
+                if bar.Size.X.Scale >= 0.999 then
+                    local sellEvent = getSellEvent()
+                    if sellEvent then
+                        isSelling = true
+                        local ok = pcall(function()
+                            sellEvent:FireServer()
+                        end)
+                        setStatus(ok and "Bar full — sell event sent" or "Sell call failed")
+                        task.delay(0.6, function()
+                            isSelling = false
+                            cachedBar = nil
+                        end)
+                    else
+                        setStatus("Bar full, but Sell event not found")
+                    end
+                end
+            end)
+        end
+        setStatus("EAT/GRAB: " .. (eatGrabRunning and "ON" or "OFF") .. " | AUTO-SELL: ON")
+    else
+        if sellConnection then
+            sellConnection:Disconnect()
+            sellConnection = nil
+        end
+        isSelling = false
+        setStatus("EAT/GRAB: " .. (eatGrabRunning and "ON" or "OFF") .. " | AUTO-SELL: OFF")
+    end
+end
+
+local function makeButton(parent, name, text, y, callback)
     local button = Instance.new("TextButton")
-    button.Name = text:gsub("%W", "") .. "Button"
+    button.Name = name
     button.Parent = parent
-    button.Position = position
-    button.Size = UDim2.new(1, -20, 0, 38)
+    button.Position = UDim2.new(0, 10, 0, y)
+    button.Size = UDim2.new(1, -20, 0, 34)
     button.BackgroundColor3 = Color3.fromRGB(7, 37, 45)
     button.TextColor3 = Color3.fromRGB(255, 255, 255)
     button.Font = Enum.Font.GothamBold
-    button.TextSize = 14
+    button.TextSize = 13
     button.Text = text
     button.AutoButtonColor = true
 
@@ -117,26 +190,20 @@ local function makeButton(parent, text, position, callback)
 end
 
 screenGui = Instance.new("ScreenGui")
-screenGui.Name = "rEm_EatGrab_Test"
+screenGui.Name = "rEm_EatGrab_Sell_Test"
 screenGui.ResetOnSpawn = false
-
-local okParent = pcall(function()
-    screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-end)
-if not okParent then
-    warn("Could not create test UI in PlayerGui.")
-    return
-end
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
 panel.Parent = screenGui
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Position = UDim2.fromScale(0.5, 0.5)
-panel.Size = UDim2.new(0, 250, 0, 174)
+panel.Size = UDim2.new(0, 270, 0, 220)
 panel.BackgroundColor3 = Color3.fromRGB(4, 10, 15)
 panel.BackgroundTransparency = 0.08
 panel.Active = true
+panel.Draggable = true -- draggable panel, including on older Roblox UI behavior
 
 local panelCorner = Instance.new("UICorner")
 panelCorner.CornerRadius = UDim.new(0, 12)
@@ -151,38 +218,47 @@ local title = Instance.new("TextLabel")
 title.Name = "Title"
 title.Parent = panel
 title.BackgroundTransparency = 1
-title.Position = UDim2.new(0, 10, 0, 6)
-title.Size = UDim2.new(1, -20, 0, 26)
+title.Position = UDim2.new(0, 10, 0, 5)
+title.Size = UDim2.new(1, -20, 0, 24)
 title.Font = Enum.Font.GothamBold
-title.TextSize = 16
+title.TextSize = 15
 title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.Text = "EAT / GRAB TEST"
+title.Text = "EAT / GRAB + AUTO-SELL"
 title.TextXAlignment = Enum.TextXAlignment.Left
 
-makeButton(panel, "START EAT + GRAB", UDim2.new(0, 10, 0, 38), startTest)
-makeButton(panel, "STOP", UDim2.new(0, 10, 0, 82), stopTest)
+makeButton(panel, "StartButton", "START EAT + GRAB", 34, startEatGrab)
+makeButton(panel, "StopButton", "STOP EAT + GRAB", 72, stopEatGrab)
+makeButton(panel, "AutoSellButton", "AUTO-SELL WHEN BAR FULL: OFF", 110, function()
+    setAutoSell(not autoSellEnabled)
+    local button = panel:FindFirstChild("AutoSellButton")
+    if button then
+        button.Text = "AUTO-SELL WHEN BAR FULL: " .. (autoSellEnabled and "ON" or "OFF")
+    end
+end)
 
 local status = Instance.new("TextLabel")
 status.Name = "Status"
 status.Parent = panel
 status.BackgroundTransparency = 1
-status.Position = UDim2.new(0, 10, 0, 126)
-status.Size = UDim2.new(1, -20, 0, 34)
+status.Position = UDim2.new(0, 10, 0, 151)
+status.Size = UDim2.new(1, -20, 0, 55)
 status.Font = Enum.Font.GothamSemibold
 status.TextSize = 10
 status.TextWrapped = true
-status.TextColor3 = Color3.fromRGB(210, 245, 250)
-status.Text = "Status: OFF"
+status.TextColor3 = Color3.fromRGB(220, 245, 250)
+status.Text = "EAT/GRAB: OFF | AUTO-SELL: OFF"
 status.TextXAlignment = Enum.TextXAlignment.Left
+status.TextYAlignment = Enum.TextYAlignment.Top
 
--- Keep the panel on-screen on small displays.
 local camera = workspace.CurrentCamera
 if camera then
     local viewport = camera.ViewportSize
-    if viewport.X < 400 then
-        panel.Size = UDim2.new(0, math.max(220, viewport.X - 24), 0, 174)
+    if viewport.X < 420 then
+        panel.Size = UDim2.new(0, math.max(230, viewport.X - 24), 0, 220)
     end
 end
 
--- Cleanup if the test UI is removed.
-screenGui.Destroying:Connect(stopTest)
+screenGui.Destroying:Connect(function()
+    stopEatGrab()
+    setAutoSell(false)
+end)
