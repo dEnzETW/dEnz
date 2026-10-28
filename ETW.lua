@@ -1,3 +1,41 @@
+-- ETWDRAMA WHITELIST ACCESS GATE
+local WhitelistPlayers = game:GetService("Players")
+
+local WhitelistedUsers = {
+    "hanssaputra15",
+    "L0rdDarkShad0w",
+    "chibhothax",
+    "jiejisung00",
+    "Mount2702Blanc",
+    "ibrak4dabra",
+    "chimicaramel",
+    "miskalagi",
+    "syunako52",
+    "Carlydemul",
+    "ChickenMcNuggetsBG"
+}
+
+local whitelistPlayer = WhitelistPlayers.LocalPlayer
+
+if not whitelistPlayer or not table.find(WhitelistedUsers, whitelistPlayer.Name) then
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "ETWDRAMA",
+            Text = "Access Denied: Username tidak di-whitelist!",
+            Duration = 5
+        })
+    end)
+    return
+end
+
+pcall(function()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "ETWDRAMA",
+        Text = "Welcome, " .. whitelistPlayer.Name .. "!",
+        Duration = 3
+    })
+end)
+
 --aislop warning, but i dont care about it 
 
 
