@@ -1,4 +1,4 @@
--- ETWDRAMA WHITELIST ACCESS GATE
+-- HAI WHITELIST ACCESS GATE
 local Players = game:GetService("Players")
 local WhitelistedUsers = {
     "hanssaputra15",
