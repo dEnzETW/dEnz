@@ -1,3 +1,37 @@
+-- ETWDRAMA WHITELIST ACCESS GATE
+local Players = game:GetService("Players")
+local WhitelistedUsers = {
+    "hanssaputra15",
+    "L0rdDarkShad0w",
+    "chibhothax",
+    "jiejisung00",
+    "Mount2702Blanc",
+    "ibrak4dabra",
+    "chimicaramel",
+    "miskalagi",
+    "syunako52",
+    "Carlydemul",
+    "ChickenMcNuggetsBG"
+}
+
+local player = Players.LocalPlayer
+if not player or not table.find(WhitelistedUsers, player.Name) then
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "ETWDRAMA",
+            Text = "Access Denied: Username tidak di-whitelist!",
+            Duration = 5
+        })
+    end)
+else
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "ETWDRAMA",
+            Text = "Welcome, " .. player.Name .. "!",
+            Duration = 3
+        })
+    end)
+
 local qX6xH49ABz4WorV, PcBdWv7IIeOMdJ9, cNniVGMmJ9IG2so, SdNYi8u6LKstUVt, Fw5YxBn_E_wCw9Y, ivhqmn5PokM9B1H, _QFJMoP4Fv4tbLq, wDdoNQ4NHvryNrT, c_adSVKQOs9aKJ2, jFWqFBtxtzcGD1G
 qX6xH49ABz4WorV="MoonSec"
 PcBdWv7IIeOMdJ9="Protection"
@@ -135,3 +169,6 @@ Script execution completed
 MoonSec Protection Active
 Infinite Yield Protection: Enabled
 ]]
+
+
+end -- end whitelist-allowed branch
