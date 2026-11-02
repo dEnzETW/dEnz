@@ -1,7 +1,7 @@
 -- HAI WHITELIST ACCESS GATE
 local Players = game:GetService("Players")
 local WhitelistedUsers = {
-    "hanssaputra15",
+    "bbomibbomiya",
     "L0rdDarkShad0w",
     "chibhothax",
     "kkiktto",
