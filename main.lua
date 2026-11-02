@@ -7,7 +7,7 @@ local WhitelistedUsers = {
     "kkiktto",
     "Mount2702Blanc",
     "ibrak4dabra",
-    "chimicaramel",
+    "bubbleblob1926",
     "miskalagi",
     "syunako52",
     "Carlydemul",
