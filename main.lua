@@ -9,7 +9,7 @@ local WhitelistedUsers = {
     "ibrak4dabra",
     "bubbleblob1926",
     "miskalagi",
-    "syunako52",
+    "ZloyIzumrudikYT",
     "Carlydemul",
     "ChickenMcNuggetsBG"
 }
