@@ -2,7 +2,7 @@
 local WhitelistPlayers = game:GetService("Players")
 
 local WhitelistedUsers = {
-    "hanssaputra15",
+    "STREZTBTMTVAY",
     "L0rdDarkShad0w",
     "chibhothax",
     "kkiktto",
